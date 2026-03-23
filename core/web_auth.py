@@ -30,6 +30,8 @@ def _basic_auth_exempt_path(path: str) -> bool:
         return True
     if p in ("/api/auth/register", "/api/auth/login", "/api/me", "/api/config"):
         return True
+    if p.startswith("/api/admin"):
+        return True
     return False
 
 

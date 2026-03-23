@@ -2,14 +2,19 @@
 
 from __future__ import annotations
 
-from passlib.context import CryptContext
+import bcrypt
 
-_pwd = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# bcrypt: не более 72 байт в UTF-8
+def _password_bytes(plain: str) -> bytes:
+    return plain.encode("utf-8")[:72]
 
 
 def hash_password(plain: str) -> str:
-    return _pwd.hash(plain)
+    return bcrypt.hashpw(_password_bytes(plain), bcrypt.gensalt()).decode("ascii")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(_password_bytes(plain), hashed.encode("ascii"))
+    except (ValueError, TypeError):
+        return False

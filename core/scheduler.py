@@ -132,6 +132,7 @@ def run_scan(
     fetch_workers: int | None = None,
     gigachat_parallel_workers: int | None = None,
     profile_id: int = 1,
+    user_id: int = 1,
 ) -> dict[str, Any]:
     """
     Выполняет одно полное сканирование: поиск, фильтр, сохранение в БД, пересчёт каналов.
@@ -388,7 +389,7 @@ def run_scan(
     if do_export:
         from core.app_settings import load_app_settings
 
-        xf = dict(load_app_settings().get("excel_export") or {})
+        xf = dict(load_app_settings(user_id).get("excel_export") or {})
         xf["profile_id"] = profile_id
         with session_scope() as ex_session:
             xp = export_excel(ex_session, kw_in, export_filters=xf)

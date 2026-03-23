@@ -600,10 +600,31 @@ export default function App() {
   };
 
   const copyText = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
+    const ok = () => {
       setSettingsOk("Скопировано в буфер.");
       window.setTimeout(() => setSettingsOk(null), 2000);
+    };
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+        ok();
+        return;
+      }
+    } catch {
+      /* fallback below */
+    }
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      const done = document.execCommand("copy");
+      document.body.removeChild(ta);
+      if (!done) throw new Error("execCommand failed");
+      ok();
     } catch {
       setErr("Не удалось скопировать в буфер обмена.");
     }
@@ -611,7 +632,7 @@ export default function App() {
 
   const submitAuth = async () => {
     setErr(null);
-    const path = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+    const path = authMode === "login" ? "/auth/login" : "/auth/register";
     const r = await apiFetch(`${API}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

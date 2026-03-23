@@ -252,7 +252,7 @@ def classify_cmd(reclassify_all: bool) -> None:
     run_gigachat_on_pending(reclassify_all=reclassify_all, console=console)
     from core.app_settings import load_app_settings
 
-    xf = load_app_settings().get("excel_export") or {}
+    xf = load_app_settings(1).get("excel_export") or {}
     with session_scope() as session:
         p = export_html(session, "—", export_filters=xf)
         x = export_excel(session, "—", export_filters=xf)

@@ -215,6 +215,11 @@ SHGSH_TEMPLATE_MERGE: bool = _get_bool("SHGSH_TEMPLATE_MERGE", True)
 GIGACHAT_SKIP_LLM_ON_STRONG_HEURISTIC: bool = _get_bool("GIGACHAT_SKIP_LLM_ON_STRONG_HEURISTIC", True)
 
 APP_SETTINGS_FILE: Path = _PROJECT_ROOT / "data" / "app_settings.json"
+USER_SETTINGS_DIR: Path = _PROJECT_ROOT / "data" / "user_settings"
+
+# Админ-панель /admin (смените пароль в проде)
+ADMIN_USER: str = _get_str("ADMIN_USER", "admin")
+ADMIN_PASSWORD: str = _get_str("ADMIN_PASSWORD", "324581")
 
 # Параллельная загрузка выдачи VK/Rutube (число одновременных запросов по разным ключам)
 SCAN_FETCH_WORKERS: int = _get_int("SCAN_FETCH_WORKERS", 8)
@@ -227,3 +232,4 @@ def ensure_directories() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     EXPORT_DIR.mkdir(parents=True, exist_ok=True)
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
+    USER_SETTINGS_DIR.mkdir(parents=True, exist_ok=True)

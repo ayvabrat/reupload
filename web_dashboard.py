@@ -21,7 +21,13 @@ from sqlalchemy import func, nulls_last, select
 from starlette.middleware.sessions import SessionMiddleware
 
 import config
-from core.app_settings import load_app_settings, save_app_settings
+from core.admin_log import clear_errors, list_errors, push_error
+from core.app_settings import (
+    default_settings_template,
+    load_app_settings,
+    save_app_settings,
+    save_global_legacy_settings,
+)
 from core.database import init_db, session_scope
 from core.models import Channel, DataProfile, ScanProfile, User, Video
 from core.monitor_service import start_monitor_daemon
@@ -69,6 +75,16 @@ app.add_middleware(
 )
 
 app.add_middleware(BasicAuthMiddleware)
+
+
+@app.middleware("http")
+async def _log_errors_middleware(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:
+        uid = _session_uid(request)
+        push_error(str(e), traceback.format_exc(), path=request.url.path, user_id=uid)
+        raise
 
 
 def _session_uid(request: Request) -> int | None:
@@ -180,6 +196,9 @@ def api_me(request: Request) -> dict[str, Any]:
         if not u:
             request.session.clear()
             return {"user": None}
+        # Скаляры до выхода из session_scope — иначе DetachedInstanceError на ORM-объекте
+        user_id = u.id
+        user_login = u.email
         profs = s.scalars(select(DataProfile).where(DataProfile.user_id == uid).order_by(DataProfile.id.asc())).all()
         pid = request.session.get("data_profile_id")
         if pid is not None:
@@ -190,10 +209,10 @@ def api_me(request: Request) -> dict[str, Any]:
                     request.session["data_profile_id"] = pid_i
         elif profs:
             request.session["data_profile_id"] = profs[0].id
-        out_pid = request.session.get("data_profile_id")
         items = [{"id": p.id, "name": p.name, "created_at": p.created_at.isoformat()} for p in profs]
+    out_pid = request.session.get("data_profile_id")
     return {
-        "user": {"id": u.id, "login": u.email},
+        "user": {"id": user_id, "login": user_login},
         "data_profile_id": int(out_pid) if out_pid is not None else None,
         "data_profiles": items,
     }
@@ -329,10 +348,11 @@ def delete_data_profile(
 
 
 @app.get("/api/config")
-def api_config() -> dict[str, Any]:
-    """Шаблон ключевых слов и сохранённые настройки приложения."""
+def api_config(request: Request) -> dict[str, Any]:
+    """Шаблон ключевых слов и настройки текущего пользователя (после входа)."""
     init_db()
-    app_st = load_app_settings()
+    uid = _session_uid(request)
+    app_st = load_app_settings(uid) if uid is not None else default_settings_template()
     return {
         "shgsh_keywords_template": (config.SHGSH_KEYWORDS_TEMPLATE or "").strip(),
         "template_merge_default": config.SHGSH_TEMPLATE_MERGE,
@@ -343,14 +363,14 @@ def api_config() -> dict[str, Any]:
 
 
 @app.patch("/api/settings")
-def patch_app_settings(body: dict[str, Any], _uid: int = Depends(require_login)) -> dict[str, Any]:
-    """Сливает настройки (Telegram, мониторинг, фильтр Excel) в data/app_settings.json."""
-    return save_app_settings(body)
+def patch_app_settings(body: dict[str, Any], uid: int = Depends(require_login)) -> dict[str, Any]:
+    """Сливает настройки (Telegram, мониторинг, фильтр Excel) в data/user_settings/{uid}.json."""
+    return save_app_settings(body, uid)
 
 
 @app.post("/api/telegram/test")
-def telegram_test(_uid: int = Depends(require_login)) -> dict[str, Any]:
-    ok, msg = test_telegram_connection()
+def telegram_test(uid: int = Depends(require_login)) -> dict[str, Any]:
+    ok, msg = test_telegram_connection(uid)
     if not ok:
         raise HTTPException(400, msg)
     return {"ok": True, "message": msg}
@@ -407,8 +427,9 @@ def _merge_export_filters(
     ai_category: str | None,
     duration_filter: str | None,
     profile_id: int | None = None,
+    user_id: int = 1,
 ) -> dict[str, Any]:
-    base = dict(load_app_settings().get("excel_export") or {})
+    base = dict(load_app_settings(user_id).get("excel_export") or {})
     if profile_id is not None:
         base["profile_id"] = profile_id
     if platform in ("vk", "rutube", "any"):
@@ -429,9 +450,10 @@ def download_excel(
     ai_category: str | None = Query(None),
     duration_filter: str | None = Query(None),
     profile_id: int = Depends(active_data_profile_id),
+    uid: int = Depends(require_login),
 ) -> FileResponse:
     init_db()
-    xf = _merge_export_filters(platform, ai, ai_category, duration_filter, profile_id=profile_id)
+    xf = _merge_export_filters(platform, ai, ai_category, duration_filter, profile_id=profile_id, user_id=uid)
     with session_scope() as session:
         path = export_excel(session, "export", export_filters=xf)
     return FileResponse(
@@ -448,9 +470,10 @@ def download_html(
     ai_category: str | None = Query(None),
     duration_filter: str | None = Query(None),
     profile_id: int = Depends(active_data_profile_id),
+    uid: int = Depends(require_login),
 ) -> FileResponse:
     init_db()
-    xf = _merge_export_filters(platform, ai, ai_category, duration_filter, profile_id=profile_id)
+    xf = _merge_export_filters(platform, ai, ai_category, duration_filter, profile_id=profile_id, user_id=uid)
     with session_scope() as session:
         path = export_html(session, "export", export_filters=xf)
     return FileResponse(path, filename=path.name, media_type="text/html; charset=utf-8")
@@ -547,7 +570,11 @@ def delete_profile(profile_id: int, _uid: int = Depends(require_login)) -> dict[
 
 
 @app.post("/api/search")
-def start_search(body: SearchRequest, profile_id: int = Depends(active_data_profile_id)) -> JSONResponse:
+def start_search(
+    body: SearchRequest,
+    profile_id: int = Depends(active_data_profile_id),
+    user_id: int = Depends(require_login),
+) -> JSONResponse:
     global _scan_running, _scan_message, _scan_error, _scan_last_stats, _active_scan_control
     pls = [p.lower().strip() for p in body.platforms if p.strip()]
     if not pls:
@@ -582,6 +609,7 @@ def start_search(body: SearchRequest, profile_id: int = Depends(active_data_prof
                 control=ctrl,
                 fetch_workers=body.fetch_workers,
                 profile_id=profile_id,
+                user_id=user_id,
             )
             _scan_last_stats = stats
             msg = "Остановлено" if stats.get("cancelled") else "Готово"
@@ -727,6 +755,110 @@ def list_videos(
     }
 
 
+class AdminLoginBody(BaseModel):
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+def require_admin(request: Request) -> None:
+    if not request.session.get("admin"):
+        raise HTTPException(401, "Нужен вход администратора")
+
+
+@app.get("/admin", include_in_schema=False)
+def admin_page() -> FileResponse:
+    p = config.BUNDLE_ROOT / "templates" / "admin.html"
+    if not p.is_file():
+        raise HTTPException(404, "admin.html не найден")
+    return FileResponse(p, media_type="text/html; charset=utf-8")
+
+
+@app.post("/api/admin/login")
+def admin_login(request: Request, body: AdminLoginBody) -> dict[str, Any]:
+    if body.username.strip() == config.ADMIN_USER and body.password == config.ADMIN_PASSWORD:
+        request.session["admin"] = True
+        return {"ok": True}
+    raise HTTPException(401, "Неверный логин или пароль")
+
+
+@app.post("/api/admin/logout")
+def admin_logout(request: Request) -> dict[str, str]:
+    request.session.pop("admin", None)
+    return {"ok": "true"}
+
+
+@app.get("/api/admin/me")
+def admin_me(request: Request) -> dict[str, Any]:
+    return {"admin": bool(request.session.get("admin"))}
+
+
+@app.get("/api/admin/errors")
+def admin_errors(_: None = Depends(require_admin)) -> dict[str, Any]:
+    return {"items": list_errors(300)}
+
+
+@app.delete("/api/admin/errors")
+def admin_errors_clear(_: None = Depends(require_admin)) -> dict[str, str]:
+    clear_errors()
+    return {"status": "ok"}
+
+
+@app.get("/api/admin/users")
+def admin_users(_: None = Depends(require_admin)) -> dict[str, Any]:
+    init_db()
+    with session_scope() as s:
+        rows = s.execute(select(User).order_by(User.id.asc())).scalars().all()
+        items = [{"id": u.id, "email": u.email, "created_at": u.created_at.isoformat()} for u in rows]
+    return {"items": items}
+
+
+@app.get("/api/admin/settings/global")
+def admin_get_global_settings(_: None = Depends(require_admin)) -> dict[str, Any]:
+    return {"settings": load_app_settings(None)}
+
+
+@app.put("/api/admin/settings/global")
+def admin_put_global_settings(body: dict[str, Any], _: None = Depends(require_admin)) -> dict[str, Any]:
+    return {"settings": save_global_legacy_settings(body)}
+
+
+@app.get("/api/admin/settings/user/{user_id}")
+def admin_get_user_settings(user_id: int, _: None = Depends(require_admin)) -> dict[str, Any]:
+    return {"user_id": user_id, "settings": load_app_settings(user_id)}
+
+
+@app.put("/api/admin/settings/user/{user_id}")
+def admin_put_user_settings(user_id: int, body: dict[str, Any], _: None = Depends(require_admin)) -> dict[str, Any]:
+    return {"user_id": user_id, "settings": save_app_settings(body, user_id)}
+
+
+@app.get("/api/admin/env")
+def admin_env(_: None = Depends(require_admin)) -> dict[str, Any]:
+    """Снимок ключевых переменных (секреты частично скрыты)."""
+    import os
+
+    def mask(v: str) -> str:
+        if len(v) <= 8:
+            return "***"
+        return v[:4] + "…" + v[-4:]
+
+    keys = [
+        "VK_ACCESS_TOKEN",
+        "TELEGRAM_BOT_TOKEN",
+        "GIGACHAT_AUTH_KEY",
+        "SESSION_SECRET",
+        "WEB_AUTH_USER",
+        "ADMIN_PASSWORD",
+    ]
+    out: dict[str, str] = {}
+    for k in keys:
+        raw = os.getenv(k) or ""
+        out[k] = mask(raw) if raw else ""
+    out["WEB_API_PORT"] = str(config.WEB_API_PORT)
+    out["DB_PATH"] = str(config.DB_PATH)
+    return {"env": out}
+
+
 def _get_web_dist() -> Path:
     return config.BUNDLE_ROOT / "web" / "dist"
 
@@ -745,6 +877,8 @@ def _mount_frontend() -> None:
         @app.get("/{full_path:path}")
         def _spa(full_path: str) -> FileResponse:
             if full_path.startswith("api"):
+                raise HTTPException(404)
+            if full_path == "admin" or full_path.startswith("admin/"):
                 raise HTTPException(404)
             return FileResponse(dist / "index.html")
 

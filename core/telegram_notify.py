@@ -1,5 +1,6 @@
 """
 Уведомления в Telegram о новых видео (фото-превью + подпись).
+Настройки Telegram — из app_settings пользователя-владельца профиля данных.
 """
 
 from __future__ import annotations
@@ -13,7 +14,7 @@ from loguru import logger
 import config
 from core.app_settings import load_app_settings
 from core.database import session_scope
-from core.models import Channel, Video
+from core.models import Channel, DataProfile, Video
 
 
 def _passes_category_filter(v: Video, tel: dict[str, Any]) -> bool:
@@ -26,7 +27,6 @@ def _passes_category_filter(v: Video, tel: dict[str, Any]) -> bool:
         return bool(tel.get("notify_series", True))
     if cat == "team":
         return bool(tel.get("notify_team", True))
-    # классифицировано как ШГШ, но без категории — считаем как «любая категория включена»
     return bool(tel.get("notify_reaction") or tel.get("notify_series") or tel.get("notify_team"))
 
 
@@ -52,11 +52,8 @@ def _caption(v: Video, ch: Channel) -> str:
     return "\n".join(parts)[:1020]
 
 
-def notify_new_videos(video_ids: list[int]) -> None:
-    """Отправляет карточки для списка id (после классификации)."""
-    if not video_ids:
-        return
-    settings = load_app_settings()
+def _send_for_user(user_id: int, video_ids: list[int]) -> None:
+    settings = load_app_settings(user_id)
     tel = settings.get("telegram") or {}
     token = (tel.get("bot_token") or config.TELEGRAM_BOT_TOKEN or "").strip()
     chat = (tel.get("chat_id") or config.TELEGRAM_CHAT_ID or "").strip()
@@ -102,9 +99,27 @@ def notify_new_videos(video_ids: list[int]) -> None:
             logger.exception("Telegram notify: {}", e)
 
 
-def test_telegram_connection() -> tuple[bool, str]:
-    """Проверка токена и chat_id."""
-    settings = load_app_settings()
+def notify_new_videos(video_ids: list[int]) -> None:
+    """Отправляет карточки; настройки — по владельцу профиля данных каждого видео."""
+    if not video_ids:
+        return
+    by_user: dict[int, list[int]] = {}
+    with session_scope() as session:
+        for vid in video_ids:
+            v = session.get(Video, vid)
+            if not v:
+                continue
+            dp = session.get(DataProfile, v.profile_id)
+            uid = dp.user_id if dp else 1
+            by_user.setdefault(uid, []).append(vid)
+
+    for uid, ids in by_user.items():
+        _send_for_user(uid, ids)
+
+
+def test_telegram_connection(user_id: int) -> tuple[bool, str]:
+    """Проверка токена и chat_id из настроек пользователя."""
+    settings = load_app_settings(user_id)
     tel = settings.get("telegram") or {}
     token = (tel.get("bot_token") or config.TELEGRAM_BOT_TOKEN or "").strip()
     chat = (tel.get("chat_id") or config.TELEGRAM_CHAT_ID or "").strip()

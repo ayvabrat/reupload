@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Админ — ReUpload Detector</title>
+  <style>
+    :root { --bg: #fff; --bd: #ccc; --tx: #111; --mu: #555; }
+    body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem; background: var(--bg); color: var(--tx); max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 1.2rem; }
+    section { border: 1px solid var(--bd); padding: 1rem; margin-bottom: 1rem; }
+    pre, textarea { font-size: 12px; width: 100%; box-sizing: border-box; }
+    textarea { min-height: 200px; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { border: 1px solid var(--bd); padding: 0.35rem 0.5rem; text-align: left; }
+    .err { background: #f5f5f5; color: #800; white-space: pre-wrap; word-break: break-all; }
+    button { padding: 0.4rem 0.8rem; margin-right: 0.5rem; cursor: pointer; }
+    .row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    label { color: var(--mu); font-size: 14px; }
+    input[type="password"], input[type="text"] { padding: 0.35rem; min-width: 200px; }
+  </style>
+</head>
+<body>
+  <h1>Админ-панель ReUpload Detector</h1>
+  <p style="color: var(--mu); font-size: 14px;">Логин и пароль из .env (по умолчанию admin / 324581). Сессия в cookie.</p>
+
+  <section id="loginBox">
+    <h2>Вход</h2>
+    <div class="row">
+      <label>Логин <input type="text" id="admUser" value="admin" autocomplete="username" /></label>
+      <label>Пароль <input type="password" id="admPass" autocomplete="current-password" /></label>
+      <button type="button" id="btnLogin">Войти</button>
+    </div>
+    <p id="loginMsg" style="color:#800;"></p>
+  </section>
+
+  <section id="panel" style="display:none;">
+    <div class="row">
+      <button type="button" id="btnLogout">Выйти из админки</button>
+      <button type="button" id="btnRefresh">Обновить всё</button>
+    </div>
+
+    <h2>Переменные окружения (маскированные)</h2>
+    <pre id="envOut"></pre>
+
+    <h2>Пользователи</h2>
+    <table id="tblUsers"><thead><tr><th>id</th><th>логин (email в БД)</th><th>создан</th></tr></thead><tbody></tbody></table>
+
+    <h2>Глобальный app_settings.json (legacy)</h2>
+    <textarea id="globalJson"></textarea>
+    <button type="button" id="btnSaveGlobal">Сохранить глобальные настройки</button>
+
+    <h2>Настройки пользователя по id</h2>
+    <div class="row">
+      <label>user id <input type="number" id="editUid" min="1" value="1" style="width:80px" /></label>
+      <button type="button" id="btnLoadUser">Загрузить</button>
+      <button type="button" id="btnSaveUser">Сохранить</button>
+    </div>
+    <textarea id="userJson"></textarea>
+
+    <h2>Ошибки (последние)</h2>
+    <button type="button" id="btnClearErr">Очистить лог</button>
+    <div id="errorsOut"></div>
+  </section>
+
+  <script>
+    const api = (path, opts) => fetch(path, { credentials: "include", ...opts });
+
+    async function login() {
+      const r = await api("/api/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: document.getElementById("admUser").value.trim(),
+          password: document.getElementById("admPass").value,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        document.getElementById("loginMsg").textContent = j.detail || r.statusText;
+        return;
+      }
+      document.getElementById("loginBox").style.display = "none";
+      document.getElementById("panel").style.display = "block";
+      refreshAll();
+    }
+
+    async function logout() {
+      await api("/api/admin/logout", { method: "POST" });
+      document.getElementById("panel").style.display = "none";
+      document.getElementById("loginBox").style.display = "block";
+    }
+
+    async function refreshAll() {
+      const [e, u, g] = await Promise.all([
+        api("/api/admin/env").then((r) => r.json()),
+        api("/api/admin/users").then((r) => r.json()),
+        api("/api/admin/settings/global").then((r) => r.json()),
+      ]);
+      document.getElementById("envOut").textContent = JSON.stringify(e.env, null, 2);
+      const tb = document.querySelector("#tblUsers tbody");
+      tb.innerHTML = "";
+      (u.items || []).forEach((x) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = "<td>" + x.id + "</td><td>" + (x.email || "") + "</td><td>" + (x.created_at || "") + "</td>";
+        tb.appendChild(tr);
+      });
+      document.getElementById("globalJson").value = JSON.stringify(g.settings, null, 2);
+
+      const er = await api("/api/admin/errors").then((r) => r.json());
+      const div = document.getElementById("errorsOut");
+      div.innerHTML = (er.items || [])
+        .map(
+          (x) =>
+            "<div class='err'><strong>" +
+            (x.ts || "") +
+            "</strong> " +
+            (x.path || "") +
+            " user=" +
+            (x.user_id ?? "—") +
+            "<br/>" +
+            (x.message || "") +
+            "<br/><small>" +
+            (x.detail || "").slice(0, 4000) +
+            "</small></div>"
+        )
+        .join("");
+    }
+
+    document.getElementById("btnLogin").onclick = login;
+    document.getElementById("btnLogout").onclick = logout;
+    document.getElementById("btnRefresh").onclick = refreshAll;
+
+    document.getElementById("btnSaveGlobal").onclick = async () => {
+      let body;
+      try {
+        body = JSON.parse(document.getElementById("globalJson").value);
+      } catch (e) {
+        alert("Невалидный JSON");
+        return;
+      }
+      const r = await api("/api/admin/settings/global", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) alert(await r.text());
+      else alert("Сохранено");
+    };
+
+    document.getElementById("btnLoadUser").onclick = async () => {
+      const uid = document.getElementById("editUid").value;
+      const r = await api("/api/admin/settings/user/" + uid);
+      const j = await r.json();
+      document.getElementById("userJson").value = JSON.stringify(j.settings, null, 2);
+    };
+
+    document.getElementById("btnSaveUser").onclick = async () => {
+      const uid = document.getElementById("editUid").value;
+      let body;
+      try {
+        body = JSON.parse(document.getElementById("userJson").value);
+      } catch (e) {
+        alert("Невалидный JSON");
+        return;
+      }
+      const r = await api("/api/admin/settings/user/" + uid, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!r.ok) alert(await r.text());
+      else alert("Сохранено");
+    };
+
+    document.getElementById("btnClearErr").onclick = async () => {
+      await api("/api/admin/errors", { method: "DELETE" });
+      refreshAll();
+    };
+
+    api("/api/admin/me")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.admin) {
+          document.getElementById("loginBox").style.display = "none";
+          document.getElementById("panel").style.display = "block";
+          refreshAll();
+        }
+      });
+  </script>
+</body>
+</html>

@@ -1,0 +1,284 @@
+================================================================================
+ПРОМПТ ДЛЯ LOVABLE / AI: клон интерфейса «ReUpload Detector» + подключение к API на VPS
+Скопируйте всё ниже в чат генератора.
+================================================================================
+
+Роль: ты — фронтенд-разработчик. Нужно воссоздать одностраничную админ-панель на React+TypeScript+Vite с тем же визуальным языком и структурой DOM/классов, что в примерах кода ниже. Бэкенд уже есть на VPS (FastAPI); фронт ходит на него через cookie-сессию (credentials: "include"). База путей API: переменная import.meta.env.VITE_API_URL || "/api" — и дальше ВСЕГДА пути вида `${API}/me`, `${API}/auth/login`, БЕЗ дублирования /api/api.
+
+────────────────────────────────────────────────────────────────────────────
+1) ГЛОБАЛЬНЫЕ СТИЛИ (CSS) — скопируй дизайн-токены и ключевые блоки
+────────────────────────────────────────────────────────────────────────────
+
+:root {
+  --bg: #ffffff;
+  --surface: #f5f5f5;
+  --border: #cccccc;
+  --text: #111111;
+  --muted: #555555;
+  --inverse: #000000;
+}
+
+body { margin: 0; min-height: 100vh; font-family: system-ui, "Segoe UI", sans-serif; font-size: 15px; line-height: 1.45; background: var(--bg); color: var(--text); }
+
+.app-shell { max-width: 1200px; margin: 0 auto; padding: 1rem 1rem 2rem; }
+
+.app-header {
+  display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start;
+  gap: 1rem; margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
+}
+.app-header > div:first-child { flex: 1 1 280px; min-width: 0; }
+.app-user-bar { display: flex; align-items: center; gap: 0.75rem; flex-shrink: 0; }
+
+.app-lead { margin: 0.4rem 0 0; color: var(--muted); font-size: 0.9rem; max-width: 48rem; }
+.app-header h1 { margin: 0; font-size: 1.35rem; font-weight: 700; color: var(--text); }
+
+/* Авторизация */
+.auth-panel { max-width: 420px; margin: 0 auto; }
+.auth-mode-switch { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); margin-bottom: 1rem; }
+.auth-mode-tab { flex: 1; padding: 0.65rem 1rem; border: none; background: var(--surface); color: var(--muted); cursor: pointer; font-weight: 600; }
+.auth-mode-tab--active { background: var(--text); color: var(--bg); }
+.auth-title { margin: 0 0 0.35rem; font-size: 1.35rem; }
+.auth-hint { margin: 0 0 1rem; font-size: 0.9rem; color: var(--muted); line-height: 1.4; }
+.auth-submit { width: 100%; margin-top: 0.25rem; }
+
+/* Алерты, статистика, панели */
+.app-alert { padding: 0.65rem 0.85rem; border: 1px solid var(--border); margin-bottom: 0.85rem; background: var(--surface); }
+.app-alert--err { border-color: var(--inverse); background: #f0f0f0; }
+.app-alert--run { display: flex; align-items: center; gap: 0.5rem; }
+.pulse { width: 8px; height: 8px; border-radius: 50%; background: var(--inverse); flex-shrink: 0; }
+.app-trace { font-size: 0.75rem; overflow: auto; max-height: 160px; background: var(--surface); padding: 0.5rem 0.65rem; border: 1px solid var(--border); }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+.stat-card { background: var(--bg); border: 1px solid var(--border); padding: 0.65rem 0.75rem; text-align: center; }
+.stat-card--accent { border-width: 2px; border-color: var(--inverse); }
+.stat-value { font-size: 1.35rem; font-weight: 700; color: var(--text); }
+.stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+
+.panel { background: var(--bg); border: 1px solid var(--border); padding: 1rem; margin-bottom: 1rem; }
+.panel h2 { margin: 0 0 0.75rem; font-size: 1.05rem; font-weight: 600; }
+.panel-note { margin: 0 0 0.75rem; font-size: 0.85rem; color: var(--muted); line-height: 1.4; max-width: 48rem; }
+
+.form-stack { display: flex; flex-direction: column; gap: 0.65rem; }
+.field { display: flex; flex-direction: column; gap: 0.25rem; }
+.field-label { color: var(--muted); font-size: 0.85rem; }
+.input, .select { width: 100%; padding: 0.45rem 0.5rem; border: 1px solid var(--border); background: var(--bg); color: var(--text); border-radius: 2px; }
+.input-num { width: 88px; padding: 0.35rem 0.45rem; border: 1px solid var(--border); border-radius: 2px; }
+.form-row { display: flex; flex-wrap: wrap; gap: 0.75rem 1rem; align-items: center; }
+.chk { display: flex; align-items: center; gap: 0.35rem; font-size: 0.9rem; cursor: pointer; }
+
+.btn-primary { align-self: flex-start; padding: 0.5rem 1rem; border: 1px solid var(--inverse); font-weight: 600; cursor: pointer; background: var(--inverse); color: #ffffff; border-radius: 2px; }
+.btn-primary:hover:not(:disabled) { background: #333333; border-color: #333333; }
+.btn-secondary { padding: 0.45rem 0.75rem; border: 1px solid var(--border); font-weight: 500; cursor: pointer; background: var(--bg); color: var(--text); border-radius: 2px; }
+.btn-secondary:hover:not(:disabled) { background: var(--surface); border-color: var(--inverse); }
+.btn-danger-outline { border-color: var(--inverse) !important; }
+
+.export-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; margin-bottom: 1rem; font-size: 0.9rem; color: var(--muted); }
+.export-link { color: var(--text); text-decoration: none; padding: 0.25rem 0.5rem; border: 1px solid var(--border); background: var(--bg); }
+.scan-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; justify-content: space-between; }
+.scan-btn-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.toolbar { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; margin-bottom: 0.85rem; }
+.search-wide { flex: 1 1 200px; }
+
+.video-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 0.75rem; }
+.video-card { background: var(--bg); border: 1px solid var(--border); overflow: hidden; display: flex; flex-direction: column; }
+.video-card--ai { border-width: 2px; border-color: var(--inverse); }
+.video-thumb { position: relative; aspect-ratio: 16 / 9; background: #e8e8e8; }
+.video-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.badge-plat { position: absolute; top: 6px; left: 6px; font-size: 0.65rem; font-weight: 700; text-transform: uppercase; padding: 0.15rem 0.35rem; border: 1px solid #fff; background: rgba(0,0,0,0.75); color: #fff; }
+.badge-ai { position: absolute; top: 6px; right: 6px; font-size: 0.65rem; font-weight: 700; padding: 0.15rem 0.35rem; border: 1px solid var(--inverse); background: #fff; color: var(--inverse); }
+.badge-shgsh-cat { position: absolute; top: 2rem; right: 6px; max-width: calc(100% - 12px); font-size: 0.6rem; font-weight: 600; padding: 0.15rem 0.35rem; border: 1px solid var(--inverse); background: #fff; color: var(--inverse); }
+.video-body { padding: 0.65rem 0.75rem 0.85rem; flex: 1; display: flex; flex-direction: column; gap: 0.25rem; }
+.video-title { font-weight: 600; text-decoration: none; color: var(--text); line-height: 1.35; }
+.video-meta { font-size: 0.82rem; color: var(--muted); }
+.video-meta.subtle { font-size: 0.78rem; }
+.video-ai { font-size: 0.78rem; color: var(--muted); border-top: 1px solid var(--border); padding-top: 0.35rem; margin-top: 0.25rem; }
+
+────────────────────────────────────────────────────────────────────────────
+2) УТИЛИТА FETCH (обязательно credentials для cookie-сессии)
+────────────────────────────────────────────────────────────────────────────
+
+const API = import.meta.env.VITE_API_URL || "/api";
+
+function apiFetch(url: string, init?: RequestInit) {
+  return fetch(url, { ...init, credentials: "include" });
+}
+
+// ВАЖНО: путь к логину без второго /api:
+// apiFetch(`${API}/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, password }) });
+
+────────────────────────────────────────────────────────────────────────────
+3) ЭКРАН ВХОДА / РЕГИСТРАЦИИ (структура JSX — сохранить классы и тексты)
+────────────────────────────────────────────────────────────────────────────
+
+if (!authUser) {
+  return (
+    <div className="app-shell">
+      <header className="app-header auth-screen-header">
+        <div>
+          <h1>ReUpload Detector</h1>
+          <p className="app-lead">Войдите или создайте аккаунт. Данные видео хранятся в выбранном профиле.</p>
+        </div>
+      </header>
+      {err && <div className="app-alert app-alert--err">{err}</div>}
+      <section className="panel auth-panel">
+        <div className="auth-mode-switch" role="tablist" aria-label="Режим входа">
+          <button type="button" role="tab" className={`auth-mode-tab${authMode === "login" ? " auth-mode-tab--active" : ""}`} onClick={() => setAuthMode("login")}>Вход</button>
+          <button type="button" role="tab" className={`auth-mode-tab${authMode === "register" ? " auth-mode-tab--active" : ""}`} onClick={() => setAuthMode("register")}>Регистрация</button>
+        </div>
+        <h2 className="auth-title">{authMode === "login" ? "Вход в аккаунт" : "Новый аккаунт"}</h2>
+        <p className="auth-hint">
+          {authMode === "login"
+            ? "Введите логин и пароль. Если аккаунта нет — переключитесь на «Регистрация»."
+            : "Придумайте логин и пароль не короче 8 символов."}
+        </p>
+        <div className="form-stack">
+          <label className="field">
+            <span className="field-label">Логин</span>
+            <input className="input" value={authLogin} onChange={...} autoComplete="username" placeholder="например admin или nickname" />
+          </label>
+          <label className="field">
+            <span className="field-label">Пароль</span>
+            <input type="password" className="input" value={authPassword} onChange={...} autoComplete={authMode === "login" ? "current-password" : "new-password"} placeholder={authMode === "register" ? "не менее 8 символов" : ""} />
+          </label>
+          <button type="button" className="btn-primary auth-submit" onClick={submitAuth}>
+            {authMode === "login" ? "Войти" : "Зарегистрироваться"}
+          </button>
+          <p className="panel-note">После миграции старой базы можно войти логином <code>admin@local</code>, пароль <code>admin123</code>.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+POST ${API}/auth/login  body: { "login": string, "password": string }
+POST ${API}/auth/register  body: { "login": string, "password": string }
+GET  ${API}/me  → { user: null | { id, login }, data_profile_id, data_profiles: [...] }
+
+────────────────────────────────────────────────────────────────────────────
+4) ОСНОВНОЙ МАКЕТ ПОСЛЕ ВХОДА (фрагмент — шапка + статистика + экспорт + скан)
+────────────────────────────────────────────────────────────────────────────
+
+return (
+  <div className="app-shell">
+    <header className="app-header">
+      <div>
+        <h1>ReUpload Detector</h1>
+        <p className="app-lead">Поиск перезаливов ШГШ: SQLite на сервере, интерфейс подхватывает новые ролики чаще во время сканирования. Настройки формы сохраняются в этом браузере.</p>
+      </div>
+      <div className="app-user-bar">
+        <span className="panel-note">{authUser.login}</span>
+        <button type="button" className="btn-secondary" onClick={logout}>Выйти</button>
+      </div>
+    </header>
+
+    {err && <div className="app-alert app-alert--err">{err}</div>}
+
+    <section className="stats-grid">
+      <Stat label="Видео" value={stats?.videos ?? "—"} />
+      <Stat label="Каналы" value={stats?.channels ?? "—"} />
+      <Stat label="VK" value={stats?.vk ?? "—"} />
+      <Stat label="Rutube" value={stats?.rutube ?? "—"} />
+      <Stat label="GigaChat: релевантно" value={stats?.ai_relevant ?? "—"} accent />
+      <Stat label="Без классификации ИИ" value={stats?.ai_pending ?? "—"} />
+    </section>
+
+    <div className="export-bar">
+      <span className="export-bar-label">Экспорт базы:</span>
+      <a className="export-link" href={`${API}/export/excel${exportQuery}`} download>Excel (.xlsx)</a>
+      <a className="export-link" href={`${API}/export/html${exportQuery}`} download>HTML</a>
+      <span className="export-bar-label" style={{ marginLeft: "0.5rem" }}>фильтры ниже → «Сохранить фильтры экспорта»</span>
+    </div>
+
+    {scan?.running && (
+      <div className="app-alert app-alert--run scan-controls">
+        <span className="pulse" />
+        <span>{scan.paused ? "⏸ На паузе" : "Сканирование…"} {scan.message}</span>
+        <div className="scan-btn-row">...</div>
+      </div>
+    )}
+    {scan?.error && <pre className="app-trace">{scan.error}</pre>}
+    ...
+  </div>
+);
+
+Компонент Stat:
+function Stat({ label, value, accent }: { label: string; value: string | number; accent?: boolean }) {
+  return (
+    <div className={`stat-card${accent ? " stat-card--accent" : ""}`}>
+      <div className="stat-value">{value}</div>
+      <div className="stat-label">{label}</div>
+    </div>
+  );
+}
+
+────────────────────────────────────────────────────────────────────────────
+5) КАРТОЧКА ВИДЕО (разметка — сохранить классы для бейджей и сетки)
+────────────────────────────────────────────────────────────────────────────
+
+<section className="video-section">
+  <h2>Видео на странице: … · всего в профиле: … · стр. … / …</h2>
+  <div className="video-grid">
+    {items.map((v) => (
+      <article key={v.id} className={`video-card${v.ai_match === true ? " video-card--ai" : ""}`}>
+        <div className="video-thumb">
+          {v.thumbnail_url ? <img src={v.thumbnail_url} alt="" loading="lazy" /> : <div className="video-thumb-ph">Нет превью</div>}
+          <span className="badge-plat">{v.platform}</span>
+          {v.ai_match === true && <span className="badge-ai">ШГШ</span>}
+          {v.ai_match === true && v.ai_category && (
+            <span className={`badge-shgsh-cat badge-shgsh-cat--${v.ai_category}`}>{/* русская подпись категории */}</span>
+          )}
+        </div>
+        <div className="video-body">
+          <a href={v.video_url} target="_blank" rel="noreferrer" className="video-title">{v.title}</a>
+          <div className="video-copy-row">/* кнопки копирования ссылок */</div>
+          <div className="video-meta">{v.channel_name}</div>
+          <div className="video-meta subtle">👁 просмотры · ⏱ длительность · ключи…</div>
+          {v.ai_note && <div className="video-ai">ИИ: {v.ai_note}</div>}
+        </div>
+      </article>
+    ))}
+  </div>
+</section>
+
+Маппинг категорий ШГШ для подписи на бейдже:
+reaction → «Реакции / перезаливы», series → «Серии сериала», team → «Команда ШГШ».
+
+────────────────────────────────────────────────────────────────────────────
+6) API-ЭНДПОИНТЫ (сводка для интеграции с VPS)
+────────────────────────────────────────────────────────────────────────────
+GET    /api/me
+POST   /api/auth/login        { login, password }
+POST   /api/auth/register     { login, password }
+POST   /api/auth/logout
+GET    /api/config
+GET    /api/stats
+GET    /api/videos?limit=200&offset=0&sort=found_date&order=desc&...
+POST   /api/search            { keywords, platforms, search_in, max_results, gigachat, gigachat_during_scan, fetch_workers? }
+GET    /api/scan/status
+POST   /api/search/pause | resume | stop
+GET    /api/profiles          сценарии поиска
+POST   /api/profiles
+GET    /api/data-profiles
+POST   /api/data-profiles     { name }
+POST   /api/data-profiles/active  { profile_id }
+DELETE /api/data-profiles/:id
+PATCH  /api/settings
+POST   /api/telegram/test
+GET    /api/export/excel?...
+GET    /api/export/html?...
+
+Ошибки: { "detail": string | array }
+
+────────────────────────────────────────────────────────────────────────────
+7) VPS / СБОРКА
+────────────────────────────────────────────────────────────────────────────
+- .env.example: VITE_API_URL=https://ВАШ_ДОМЕН/api  (или пусто для прокси с того же origin)
+- CORS на бэкенде: credentials: true, origins — явный список, не *
+- Не дублировать префикс: база URL уже заканчивается на /api
+
+Сгенерируй проект с разбиением на компоненты (AuthScreen, DashboardHeader, StatsGrid, ExportBar, ScanStatus, TelegramPanel, MonitorPanel, ExcelFiltersPanel, DataProfilePanel, SearchPresetsPanel, NewSearchPanel, VideoToolbar, VideoGrid, Pagination), хук useApi с apiFetch, типы ответов API.
+
+================================================================================
+КОНЕЦ ПРОМПТА
+================================================================================

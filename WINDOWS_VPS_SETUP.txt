@@ -1,0 +1,116 @@
+VPS Windows 10 — запуск ReUpload Detector (без домена)
+======================================================
+IP в примере: 144.31.221.243 — замените на свой, если другой.
+
+Что получится: панель по адресу http://144.31.221.243:8765 (HTTP, без SSL до появления домена и сертификата).
+
+0) Подключение
+--------------
+Подключитесь к VPS по RDP (Удалённый рабочий стол) с вашего ПК.
+
+1) Python
+---------
+Скачайте Python 3.10+ с https://www.python.org/downloads/windows/
+При установке отметьте: «Add python.exe to PATH».
+
+Проверка в PowerShell (Win+X → Терминал или Windows PowerShell):
+
+  python --version
+
+2) Node.js (сборка веб-панели)
+------------------------------
+https://nodejs.org/ — LTS, установка по умолчанию.
+
+  node --version
+  npm --version
+
+3) Скопируйте проект на VPS
+-----------------------------
+Папку reupload-detector положите, например, в:
+
+  C:\Apps\reupload-detector
+
+4) Виртуальное окружение и зависимости
+---------------------------------------
+Откройте PowerShell **от имени администратора** (по желанию для шага с брандмауэром).
+
+  cd C:\Apps\reupload-detector
+  python -m venv .venv
+  .\.venv\Scripts\Activate.ps1
+
+Если ошибка политики выполнения скриптов:
+
+  Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned
+
+Снова Activate.ps1, затем:
+
+  pip install -r requirements.txt
+
+5) Сборка фронтенда
+------------------
+  cd web
+  npm install
+  npm run build
+  cd ..
+
+6) Файл .env на VPS
+-------------------
+Скопируйте .env.example в .env и заполните минимум:
+
+  VK_ACCESS_TOKEN=...ваш токен...
+  WEB_API_HOST=0.0.0.0
+  WEB_API_PORT=8765
+  WEB_AUTH_USER=admin
+  WEB_AUTH_PASSWORD=ваш_надёжный_пароль
+  DB_PATH=C:\ProgramData\ReUpload\data\database.db
+  EXPORT_DIR=C:\ProgramData\ReUpload\exports
+
+Создайте каталоги (PowerShell):
+
+  New-Item -ItemType Directory -Force -Path C:\ProgramData\ReUpload\data
+  New-Item -ItemType Directory -Force -Path C:\ProgramData\ReUpload\exports
+
+7) Брандмауэр Windows — открыть порт 8765
+------------------------------------------
+Только для входящих с интернета на этот порт:
+
+  New-NetFirewallRule -DisplayName "ReUpload 8765" -Direction Inbound -LocalPort 8765 -Protocol TCP -Action Allow
+
+Проверка: с другого компьютера в браузере открыть:
+
+  http://144.31.221.243:8765
+
+Должен запросить логин/пароль (Basic Auth), затем открыться панель.
+
+8) Запуск сервера (вручную, для проверки)
+-----------------------------------------
+В активированном venv, из корня проекта:
+
+  python -m uvicorn web_dashboard:app --host 0.0.0.0 --port 8765
+
+Окно не закрывайте. Остановка: Ctrl+C.
+
+9) Автозапуск при загрузке Windows (простой вариант)
+----------------------------------------------------
+Планировщик заданий (taskschd.msc) → «Создать задачу»:
+
+  Имя: ReUploadDetector
+  Триггер: При входе в систему (или При запуске компьютера)
+  Действие: Запуск программы
+  Программа: C:\Apps\reupload-detector\.venv\Scripts\python.exe
+  Аргументы: -m uvicorn web_dashboard:app --host 0.0.0.0 --port 8765
+  Рабочая папка: C:\Apps\reupload-detector
+
+Отметьте «Выполнять с наивысшими правами» только если нужно (обычно нет).
+
+Альтернатива: NSSM (Non-Sucking Service Manager) — ставит приложение как службу Windows (ищите nssm.cc).
+
+10) Без домена
+--------------
+• WEB_CORS_ORIGINS в .env можно оставить пустым (разрешение *) или удалить строку — так проще, пока нет https://rbx.mom.
+• Когда появится домен — пропишите WEB_CORS_ORIGINS и HTTPS (IIS/nginx + сертификат).
+
+11) Безопасность
+----------------
+• Смените пароль WEB_AUTH_PASSWORD; не используйте 123456 в открытом интернете.
+• HTTP без SSL передаёт пароль в открытом виде — для серьёзного использования нужен HTTPS после настройки домена.

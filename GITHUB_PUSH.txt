@@ -1,0 +1,21 @@
+Публикация в https://github.com/ayvabrat/reupload
+
+1. Установите зависимости и соберите UI:
+   cd reupload-detector
+   pip install -r requirements.txt
+   cd web && npm install && npm run build && cd ..
+
+2. Инициализация git (если ещё не сделано):
+   git init
+   git add .
+   git commit -m "Initial commit: ReUpload Detector with auth and data profiles"
+
+3. Добавьте remote и отправьте (замените TOKEN при необходимости):
+   git remote add origin https://github.com/ayvabrat/reupload.git
+   git branch -M main
+   git push -u origin main
+
+   С Personal Access Token:
+   git remote add origin https://USERNAME:TOKEN@github.com/ayvabrat/reupload.git
+
+4. В .env на сервере задайте SESSION_SECRET (длинная случайная строка) и при необходимости WEB_CORS_ORIGINS.

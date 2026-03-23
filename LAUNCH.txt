@@ -1,0 +1,17 @@
+ReUpload Detector — запуск «как программа» (Windows)
+
+1) Один раз в папке проекта в консоли:
+   python -m venv venv
+   venv\Scripts\activate
+   pip install -r requirements.txt
+
+2) Скопируйте .env.example в .env и укажите VK_ACCESS_TOKEN (и при необходимости GigaChat).
+
+3) Дважды щёлкните «Запуск.bat» — откроется браузер с панелью.
+   Окно чёрной консоли не закрывайте, пока работаете с программой.
+
+4) Ярлык на рабочий стол: правый клик по Запуск.bat → «Отправить» → «Рабочий стол (создать ярлык)».
+
+Порт по умолчанию: 127.0.0.1:8765 (меняется в .env: WEB_API_PORT).
+
+Один файл .exe: см. BUILD_EXE.txt и build_exe.bat (PyInstaller).

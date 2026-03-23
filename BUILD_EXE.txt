@@ -1,0 +1,54 @@
+Сборка ReUploadDetector.exe (Windows, PyInstaller)
+==================================================
+
+Ошибка: «The 'typing' package is an obsolete backport…»
+-------------------------------------------------------
+В Python 3.9+ модуль `typing` уже в стандартной библиотеке. Старый пакет
+из pip ломает PyInstaller. Один раз выполните:
+
+   python -m pip uninstall typing -y
+
+Затем снова: pyinstaller ReUploadDetector.spec --noconfirm
+
+Зачем отдельное venv
+--------------------
+Чистое виртуальное окружение часто не содержит лишнего пакета `typing`,
+поэтому сборка проходит без шага выше.
+
+Шаги
+----
+1) Установите Node.js (для сборки веб-панели).
+
+2) В корне проекта (папка с launcher.py):
+
+   python -m venv .venv-build
+   .venv-build\Scripts\activate
+   pip install -r requirements.txt
+   pip install pyinstaller
+
+3) Соберите фронтенд:
+
+   cd web
+   npm install
+   npm run build
+   cd ..
+
+4) Соберите exe:
+
+   pyinstaller ReUploadDetector.spec --noconfirm
+
+5) Готовый файл: dist\ReUploadDetector.exe
+
+6) Рядом с exe положите файл `.env` (скопируйте из `.env.example` и заполните
+   VK_ACCESS_TOKEN и при необходимости остальное). База и `data\` создаются
+   рядом с exe автоматически.
+
+7) Запуск: двойной щелчок по ReUploadDetector.exe — откроется браузер.
+   Консоль не закрывайте, пока работаете.
+
+Примечания
+----------
+• Порт по умолчанию 8765 (WEB_API_PORT в `.env`).
+• Антивирус может долго проверять один большой exe при первом запуске.
+• Режим «без консоли» (окно только браузера) возможен (console=False в spec),
+  но тогда ошибки сервера не видны — для отладки оставьте console=True.

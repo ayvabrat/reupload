@@ -1,0 +1,45 @@
+Промпт для Lovable (готовый текст — вставить в чат проекта)
+============================================================
+Домен сайта: rbx.mom  
+Стек Lovable: React, Vite, Tailwind, Shadcn/UI, TypeScript, Supabase (PostgreSQL).  
+Бэкенд панели ReUpload Detector: отдельный Python FastAPI (не Supabase), БД панели — SQLite на том же сервере, что и uvicorn.
+
+---
+
+HTTPS (коротко): это доступ по адресу https://… с замочком в браузере. Для rbx.mom обычно подключают Cloudflare, Let’s Encrypt или сертификат хостинга. Без HTTPS логин/пароль к панели передаются небезопасно.
+
+---
+
+СКОПИРУЙТЕ БЛОК НИЖЕ В LOVABLE
+-----------------------------
+
+Ты помогаешь собрать лендинг/сайт на домене rbx.mom (React, Vite, Tailwind, Shadcn, TypeScript). Отдельно уже развёрнут бэкенд «ReUpload Detector» (Python FastAPI + uvicorn): отдаёт встроенную админку и REST API по префиксу /api. Авторизация панели — HTTP Basic Auth (логин admin, пароль задаётся в .env на сервере).
+
+Задачи:
+
+1) На сайте rbx.mom сделать страницу (например /panel или /admin), с которой посетители попадают в эту админку. Предпочтительный вариант: полноэкранный iframe с src на поддомен панели, например https://panel.rbx.mom/ (тот же FastAPI раздаёт и UI и API). Альтернатива: кнопка «Открыть панель» со ссылкой на https://panel.rbx.mom/ в новой вкладке.
+
+2) Supabase и PostgreSQL в проекте Lovable использовать для своих данных сайта (профили, контент и т.д.). Не смешивать с БД ReUpload: у ReUpload своя SQLite на сервере бэкенда; синхронизацию между ними в этом задании не делать.
+
+3) Если с фронта rbx.mom понадобятся запросы к API ReUpload на другом origin (например с https://rbx.mom к https://panel.rbx.mom), учесть CORS: на бэкенде в .env задано WEB_CORS_ORIGINS=https://rbx.mom,https://www.rbx.mom. Запросы с Basic Auth из браузера с другого домена — только при явной настройке fetch с credentials и корректном CORS; проще открывать панель на том же поддомене panel.rbx.mom без кросс-доменных API-вызовов с главной страницы.
+
+4) Стилистика страницы-обёртки на rbx.mom — в духе Shadcn/Tailwind; сама панель остаётся встроенной в FastAPI (отдельный UI).
+
+5) Добавь в README проекта коротко: «Панель ReUpload — по адресу https://panel.rbx.mom, вход по логину администратора; основной сайт — rbx.mom».
+
+---
+
+Технические ориентиры для админа сервера (Windows)
+-------------------------------------------------
+• ОС: Windows Server или Windows с постоянным включением ПК/VPS.  
+• Uvicorn слушает 127.0.0.1:8765; снаружи — reverse proxy (IIS + ARR, или nginx для Windows, или Caddy) с HTTPS на поддомен panel.rbx.mom → прокси на http://127.0.0.1:8765.  
+• SQLite: абсолютный путь, например DB_PATH=C:\ProgramData\ReUpload\database.db (создать каталог, права на запись у пользователя службы).  
+• В .env: WEB_API_HOST=0.0.0.0, WEB_API_PORT=8765, WEB_AUTH_USER=admin, WEB_AUTH_PASSWORD=(сильный пароль на проде), WEB_CORS_ORIGINS=https://rbx.mom,https://www.rbx.mom  
+
+DNS: A-запись rbx.mom и panel.rbx.mom на IP VPS; SSL — Cloudflare «Full» или сертификат на IIS/nginx.
+
+---
+
+Кратко что у вас две «базы»:
+• Supabase Postgres — только то, что вы делаете в Lovable.  
+• SQLite файл на Windows — все данные ReUpload Detector (видео, каналы, сканы).

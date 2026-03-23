@@ -189,10 +189,10 @@ export default function App() {
   const [settingsOk, setSettingsOk] = useState<string | null>(null);
 
   const [authChecked, setAuthChecked] = useState(false);
-  const [authUser, setAuthUser] = useState<{ id: number; email: string } | null>(null);
+  const [authUser, setAuthUser] = useState<{ id: number; login: string } | null>(null);
   const [dataProfiles, setDataProfiles] = useState<{ id: number; name: string }[]>([]);
   const [activeDataProfileId, setActiveDataProfileId] = useState<number | null>(null);
-  const [authEmail, setAuthEmail] = useState("");
+  const [authLogin, setAuthLogin] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [newDataProfileName, setNewDataProfileName] = useState("");
@@ -333,12 +333,15 @@ export default function App() {
       try {
         const r = await apiFetch(`${API}/me`);
         const j = (await r.json()) as {
-          user: { id: number; email: string } | null;
+          user: { id: number; login?: string; email?: string } | null;
           data_profile_id?: number | null;
           data_profiles?: { id: number; name: string }[];
         };
         if (j.user) {
-          setAuthUser(j.user);
+          setAuthUser({
+            id: j.user.id,
+            login: j.user.login ?? j.user.email ?? "",
+          });
           setDataProfiles(j.data_profiles ?? []);
           setActiveDataProfileId(j.data_profile_id ?? null);
         } else {
@@ -612,7 +615,7 @@ export default function App() {
     const r = await apiFetch(`${API}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: authEmail.trim(), password: authPassword }),
+      body: JSON.stringify({ login: authLogin.trim(), password: authPassword }),
     });
     if (!r.ok) {
       const j = await r.json().catch(() => ({}));
@@ -621,12 +624,15 @@ export default function App() {
     }
     const r2 = await apiFetch(`${API}/me`);
     const j2 = (await r2.json()) as {
-      user: { id: number; email: string } | null;
+      user: { id: number; login?: string; email?: string } | null;
       data_profiles?: { id: number; name: string }[];
       data_profile_id?: number | null;
     };
     if (j2.user) {
-      setAuthUser(j2.user);
+      setAuthUser({
+        id: j2.user.id,
+        login: j2.user.login ?? j2.user.email ?? "",
+      });
       setDataProfiles(j2.data_profiles ?? []);
       setActiveDataProfileId(j2.data_profile_id ?? null);
     }
@@ -712,48 +718,74 @@ export default function App() {
   if (!authUser) {
     return (
       <div className="app-shell">
-        <header className="app-header">
-          <h1>ReUpload Detector</h1>
-          <p className="app-lead">Войдите или зарегистрируйтесь — видео и каналы привязаны к профилю данных.</p>
+        <header className="app-header auth-screen-header">
+          <div>
+            <h1>ReUpload Detector</h1>
+            <p className="app-lead">Войдите или создайте аккаунт. Данные видео хранятся в выбранном профиле.</p>
+          </div>
         </header>
         {err && <div className="app-alert app-alert--err">{err}</div>}
-        <section className="panel">
+        <section className="panel auth-panel">
+          <div className="auth-mode-switch" role="tablist" aria-label="Режим входа">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authMode === "login"}
+              className={`auth-mode-tab${authMode === "login" ? " auth-mode-tab--active" : ""}`}
+              onClick={() => {
+                setAuthMode("login");
+                setErr(null);
+              }}
+            >
+              Вход
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={authMode === "register"}
+              className={`auth-mode-tab${authMode === "register" ? " auth-mode-tab--active" : ""}`}
+              onClick={() => {
+                setAuthMode("register");
+                setErr(null);
+              }}
+            >
+              Регистрация
+            </button>
+          </div>
+          <h2 className="auth-title">{authMode === "login" ? "Вход в аккаунт" : "Новый аккаунт"}</h2>
+          <p className="auth-hint">
+            {authMode === "login"
+              ? "Введите логин и пароль. Если аккаунта нет — переключитесь на «Регистрация»."
+              : "Придумайте логин и пароль не короче 8 символов."}
+          </p>
           <div className="form-stack">
             <label className="field">
-              <span className="field-label">Email</span>
+              <span className="field-label">Логин</span>
               <input
                 className="input"
-                value={authEmail}
-                onChange={(e) => setAuthEmail(e.target.value)}
-                autoComplete="email"
+                value={authLogin}
+                onChange={(e) => setAuthLogin(e.target.value)}
+                autoComplete="username"
+                placeholder="например admin или nickname"
               />
             </label>
             <label className="field">
-              <span className="field-label">Пароль (мин. 8 символов для регистрации)</span>
+              <span className="field-label">Пароль</span>
               <input
                 type="password"
                 className="input"
                 value={authPassword}
                 onChange={(e) => setAuthPassword(e.target.value)}
-                autoComplete="current-password"
+                autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                placeholder={authMode === "register" ? "не менее 8 символов" : ""}
               />
             </label>
-            <div className="form-row">
-              <button type="button" className={authMode === "login" ? "btn-primary" : "btn-secondary"} onClick={() => setAuthMode("login")}>
-                Вход
-              </button>
-              <button
-                type="button"
-                className={authMode === "register" ? "btn-primary" : "btn-secondary"}
-                onClick={() => setAuthMode("register")}
-              >
-                Регистрация
-              </button>
-              <button type="button" className="btn-primary" onClick={() => void submitAuth()}>
-                {authMode === "login" ? "Войти" : "Создать аккаунт"}
-              </button>
-            </div>
-            <p className="panel-note">После миграции старой базы доступен вход admin@local / admin123 — смените пароль на проде.</p>
+            <button type="button" className="btn-primary auth-submit" onClick={() => void submitAuth()}>
+              {authMode === "login" ? "Войти" : "Зарегистрироваться"}
+            </button>
+            <p className="panel-note">
+              После миграции старой базы можно войти логином <code>admin@local</code>, пароль <code>admin123</code>.
+            </p>
           </div>
         </section>
       </div>
@@ -776,7 +808,7 @@ export default function App() {
           )}
         </div>
         <div className="app-user-bar">
-          <span className="panel-note">{authUser.email}</span>
+          <span className="panel-note">{authUser.login}</span>
           <button type="button" className="btn-secondary" onClick={() => void logout()}>
             Выйти
           </button>

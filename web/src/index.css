@@ -72,6 +72,61 @@ a:hover {
   flex-shrink: 0;
 }
 
+.auth-screen-header {
+  border-bottom: none;
+  margin-bottom: 0.5rem;
+}
+
+.auth-panel {
+  max-width: 420px;
+  margin: 0 auto;
+}
+
+.auth-mode-switch {
+  display: flex;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.auth-mode-tab {
+  flex: 1;
+  padding: 0.65rem 1rem;
+  border: none;
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.auth-mode-tab:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.auth-mode-tab--active {
+  background: var(--text);
+  color: var(--bg);
+}
+
+.auth-title {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+}
+
+.auth-hint {
+  margin: 0 0 1rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.auth-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
 .export-bar {
   display: flex;
   flex-wrap: wrap;

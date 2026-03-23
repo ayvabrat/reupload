@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, nulls_last, select
@@ -141,12 +141,12 @@ class ScanProfilePatch(BaseModel):
 
 
 class RegisterBody(BaseModel):
-    email: str = Field(..., min_length=3, max_length=256)
+    login: str = Field(..., min_length=2, max_length=256)
     password: str = Field(..., min_length=8, max_length=256)
 
 
 class LoginBody(BaseModel):
-    email: str = Field(..., min_length=1, max_length=256)
+    login: str = Field(..., min_length=1, max_length=256)
     password: str = Field(..., min_length=1, max_length=256)
 
 
@@ -193,24 +193,40 @@ def api_me(request: Request) -> dict[str, Any]:
         out_pid = request.session.get("data_profile_id")
         items = [{"id": p.id, "name": p.name, "created_at": p.created_at.isoformat()} for p in profs]
     return {
-        "user": {"id": u.id, "email": u.email},
+        "user": {"id": u.id, "login": u.email},
         "data_profile_id": int(out_pid) if out_pid is not None else None,
         "data_profiles": items,
     }
 
 
+@app.get("/api/auth/login")
+def auth_login_get() -> RedirectResponse:
+    """GET в адресной строке даёт 405 у POST — перенаправляем на интерфейс."""
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/api/auth/register")
+def auth_register_get() -> RedirectResponse:
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/api/auth/logout")
+def auth_logout_get() -> RedirectResponse:
+    return RedirectResponse(url="/", status_code=302)
+
+
 @app.post("/api/auth/register")
 def auth_register(request: Request, body: RegisterBody) -> dict[str, Any]:
     init_db()
-    email = body.email.strip().lower()
-    if "@" not in email:
-        raise HTTPException(400, "Укажите корректный email")
+    login_key = body.login.strip().lower()
+    if not login_key:
+        raise HTTPException(400, "Укажите логин")
     with session_scope() as s:
-        existing = s.scalar(select(User).where(User.email == email))
+        existing = s.scalar(select(User).where(User.email == login_key))
         if existing:
-            raise HTTPException(409, "Этот email уже зарегистрирован")
+            raise HTTPException(409, "Этот логин уже занят")
         now = datetime.now()
-        u = User(email=email, password_hash=hash_password(body.password), created_at=now)
+        u = User(email=login_key, password_hash=hash_password(body.password), created_at=now)
         s.add(u)
         s.flush()
         dp = DataProfile(user_id=u.id, name="Основной", created_at=now)
@@ -225,11 +241,11 @@ def auth_register(request: Request, body: RegisterBody) -> dict[str, Any]:
 @app.post("/api/auth/login")
 def auth_login(request: Request, body: LoginBody) -> dict[str, Any]:
     init_db()
-    email = body.email.strip().lower()
+    login_key = body.login.strip().lower()
     with session_scope() as s:
-        u = s.scalar(select(User).where(User.email == email))
+        u = s.scalar(select(User).where(User.email == login_key))
         if not u or not verify_password(body.password, u.password_hash):
-            raise HTTPException(401, "Неверный email или пароль")
+            raise HTTPException(401, "Неверный логин или пароль")
         profs = list(s.scalars(select(DataProfile).where(DataProfile.user_id == u.id).order_by(DataProfile.id.asc())).all())
         if not profs:
             dp = DataProfile(user_id=u.id, name="Основной", created_at=datetime.now())
